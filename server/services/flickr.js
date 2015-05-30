@@ -1,10 +1,9 @@
 /**
-* @module queryFlickr
+* @module FlickrService
 */
 var util = require('util');
 var EventEmitter = require('events').EventEmitter;
 var Promise = require('bluebird');
-var request = require('request');
 var requestAsync = Promise.promisify(require('request'));
 var _ = require('lodash');
 var Flickr = require("flickrapi");

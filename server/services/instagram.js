@@ -139,8 +139,7 @@ InstagramService.prototype._applyTagFilter = function(query, photoObj) {
 */
 InstagramService.prototype._calculateDistance = function(lat, lng, photoObj) {
   if (photoObj.location === null || lat === undefined ||  lng === undefined) {
-    _.extend(photoObj, { distance: 10000000 });
-    return photoObj;
+    return _.extend(photoObj, { distance: 10000000 });
   }
   var firstLocation = {
     lat: lat,
@@ -150,8 +149,7 @@ InstagramService.prototype._calculateDistance = function(lat, lng, photoObj) {
     lat: photoObj.location.latitude,
     lng: photoObj.location.longitude
   };
-  _.extend(photoObj, { distance: distance(firstLocation, secondLocation) });
-  return photoObj;
+  return _.extend(photoObj, { distance: distance(firstLocation, secondLocation) });
 };
 
 /**

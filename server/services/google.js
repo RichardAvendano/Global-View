@@ -7,6 +7,7 @@ var cheerio = require('cheerio');
 var querystring = require('querystring');
 var util = require('util');
 var EventEmitter = require('events').EventEmitter;
+var _ = require('lodash');
 
 var URL = 'http://www.google.com/search?hl=en&q=%s&start=0&sa=N&num=%s&ie=UTF-8&oe=UTF-8&tbm=nws';
 var stories = 'li.g';
@@ -38,9 +39,13 @@ GoogleService.prototype.getNewsResults = function(query, location, queryAmount) 
   var amount = (queryAmount > 50) ? 50 : queryAmount;
   var queryUrl = util.format(url, search, amount);
 
-  return requestAsync(queryUrl).spread(function(res, body) {
+  var processBody = function(res, body) {
     return self._processBodyForResults(body);
-  }).catch(self.emit.bind(self, 'error'));
+  };
+
+  return requestAsync(queryUrl)
+    .spread(processBody)
+    .catch(self.emit.bind(self, 'error'));
 };
 
 /** 
@@ -77,17 +82,12 @@ GoogleService.prototype._buildNewsItem = function(el, $) {
 */
 GoogleService.prototype._processBodyForResults = function(body) {
   var $ = cheerio.load(body);
-  var links = [];
   var self = this;
 
-  $(stories).each(function(i, elem) {
-    var link = self._buildNewsItem(elem, $);
-    links.push(link);
-  });
-
-  return links;
+  return _.reduce($(stories), function(mem, elem){
+    mem.push(self._buildNewsItem(elem, $));
+    return mem;
+  }, []);
 };
 
 module.exports = new GoogleService(URL);
-
-// module.exports.getNewsResults('baseball', '55107', 5).then(function(result) {console.log ('hello rick', result); console.log('toda'); });
