@@ -140,9 +140,7 @@ exports.instagram = function(req, res) {
 * Receives GET requests from /api/flickr
 */
 exports.flickr = function(req, res){
-
   queryFlickr(req.query.city, function(err, cityPhotos){
-    
     if (!!err) { throw 'Error: '+ err; }
     var response = {
       status: 200,
@@ -151,8 +149,4 @@ exports.flickr = function(req, res){
     };
     res.end(JSON.stringify(response));
   });
-
-
-
-
 };

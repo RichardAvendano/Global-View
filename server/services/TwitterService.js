@@ -7,6 +7,7 @@ var util = require('util');
 var _ = require('lodash');
 var Twit = require('twit');
 var twitterKeys = require('../config').twitter;
+var Promise = require('bluebird');
 
 var trendingPlaces = {
   obj: ''
@@ -30,10 +31,11 @@ var T = new Twit({
 * @function
 */
 var getAvailableTrendingCities = function(callback) {
-  T.get('trends/available',function(err, data, response) {
-    if (Boolean(err)) { throw 'Error: ' + err; }
-      callback(err,data);
-  });
+  var T_get = Promise.promisify(T.get);
+  return T_get('trends/available')
+    .spread(function(data, response) {
+        return data;//callback(err,data);
+    })
 };
 
 /**
@@ -88,22 +90,27 @@ var getTrendingTopics = function(woeid, callback){
 * @function
 */
 var getTweetsForTrendObjects = function(arrayOfTrends, callback) {
-  var queue = arrayOfTrends.slice(0),
-      elem,
-      results = [];
+  var queue = arrayOfTrends.slice(0);
+  var elem;
+  var results = [];
 
-      (function iterate(){
-        if(queue.length === 0){
-          callback(null,results);
+  return new Promise(function(resolve, reject) {
+    (function iterate(){
+      if (queue.length === 0){
+        resolve(results);
+        return;
+      }
+      elem = queue.splice(0,1)[0];
+      T.get('search/tweets', {q: elem.query, count: 10}, function(err,data) {
+        if (err) {
+          reject(err);
           return;
         }
-        elem = queue.splice(0,1)[0];
-        T.get('search/tweets', {q: elem.query, count: 10}, function(err,data) {
-          if(Boolean(err)) { throw 'Error: '+err; }
-          results.push(data.statuses);
-          process.nextTick(iterate);
-        });
-      })();
+        results.push(data.statuses);
+        process.nextTick(iterate);
+      });
+    })();
+  });
 };
 
 // var getTweetsPerTrendingItem = function(counter){

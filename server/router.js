@@ -1,13 +1,13 @@
-var ApiController = require('./controllers/apiController');
-var helpers = require('./helpers/helpers');
+var Controllers = require('./controllers');
 
+/* ============== ROUTES: /api ============== */
 exports.apiRouter = function(app) {
 
-  app.get('/twitter', helpers.twitter);
-  app.get('/tweetPerTrend',helpers.tweetsForTrend);
-  app.get('/twitterTrendingCities', helpers.twitterTrendingCities);
+  // app.get('/twitter', Controllers.Twitter.somethingTwitter.bind(Controllers.Twitter));
+  app.get('/tweetPerTrend', Controllers.Twitter.getTweetsForTrend.bind(Controllers.Twitter));
+  app.get('/twitterTrendingCities', Controllers.Twitter.getTrendingCities.bind(Controllers.Twitter));
 
-  app.get('/googlenews', ApiController.getGoogleNewsResults.bind(ApiController));
-  app.get('/instagram', ApiController.getInstagramPhotos.bind(ApiController));
-  app.get('/flickr', ApiController.getCityBackgrounds.bind(ApiController));
+  app.get('/googlenews', Controllers.Google.getNewsResults.bind(Controllers.Google));
+  app.get('/instagram', Controllers.Instagram.getPhotos.bind(Controllers.Instagram));
+  app.get('/flickr', Controllers.Flickr.getCityBackgrounds.bind(Controllers.Flickr));
 };
