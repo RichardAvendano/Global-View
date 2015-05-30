@@ -1,10 +1,13 @@
 /**
-* @module queryInstagram
+* @module InstagramService
 */
-var request = require('request');
 var util = require('util');
+var EventEmitter = require('events').EventEmitter;
+var Promise = require('bluebird');
+var requestAsync = Promise.promisify(require('request'));
 var _ = require('lodash');
 var instaKeys = require('../config').instagram;
+var dayInMilliSeconds = 24 * 60 * 60 * 1000;
 
 /**
 * instaSettings contains the various API endpoint URLs
@@ -24,65 +27,66 @@ var instaSettings = {
   photoGET2: '/media/recent'
 };
 
-// amount of milliseconds in a day
-var dayInMilliSeconds = 24 * 60 * 60 * 1000;
+var InstagramService = function(settings) {
+  var url1 = settings.queryGET + '%s' + settings.queryGET2 + '?access_token=%s';
+  var url2 = settings.mediaGET + '?access_token=%s&lat=%s&lng=%s&max_timestamp=%s&min_timestamp=%s&distance=%s';
+  this.settings = settings;
+  this.urls = [url1, url2];
+
+  this.on('error', function(err) {
+    console.log('Error:', err);
+  });
+};
+
+util.inherits(InstagramService, EventEmitter);
 
 /**
 * Direct query of instagram media using lat, lng co-ordinates and date/time range OR query string
 * @function
-* @memberof module:queryInstagram
+* @memberof module:InstagramService
 * @param {object} allParameters Object of parameters passed in via query string.  May contain the following parameters (lat, lng, minDate, maxDate, query, distance, and callType)
 * @param {function} callback Callback function invoked on response results
 */
-module.exports = function(allParameters, callback) {
-  var minDate = Math.floor(allParameters.minDate/1000) || Date.now() - dayInMilliSeconds;
-  var maxDate = Math.floor(allParameters.maxDate/1000) || Date.now();
-  var lat = parseFloat(allParameters.lat) || null;
-  var lng = parseFloat(allParameters.lng) || null;
-  var query = allParameters.query || 'null';
-  query = query.replace(/#/g,'').split(' ').join('').toLowerCase();
-  var distance = allParameters.distance || 1000;
+InstagramService.prototype.getPhotos = function(parameters) {
+  var query = (parameters.query || 'null').replace(/#/g,'').split(' ').join('').toLowerCase();
+  var sortParams = parameters.callType === 'query' ? ['distance'] : ['tagMatch', 'distance'];
+  var requestURL = this._buildUrl(parameters);
+  var lat = parseFloat(parameters.lat) || null;
+  var lng = parseFloat(parameters.lng) || null;
+  var self = this;
 
-  var requestURL;
-  var sortParams=['tagMatch','distance'];
-
-  if(allParameters.callType === 'query') {
-    requestURL = instaSettings.queryGET + '%s' + instaSettings.queryGET2 + '?access_token=%s';
-    requestURL = util.format(requestURL, query, instaSettings.headers.instaToken);
-    sortParams = ['distance'];
-  } else {
-    requestURL = instaSettings.mediaGET + '?access_token=%s&lat=%s&lng=%s&max_timestamp=%s&min_timestamp=%s&distance=%s';
-    requestURL = util.format(requestURL, instaSettings.headers.instaToken, lat, lng, maxDate, minDate, distance);
-  }
-
-  request(requestURL,function(error, res, body) {
-    if(error) {
-      console.log(error);
-    } else {
-      var results = JSON.parse(body);
-      callback(error, sortResults(resultsDecorator(results.data,[
-        trimResponse,
-        applyTagFilter.bind(null,query),
-        calculateDistance.bind(null,lat,lng)
-        ]),sortParams));
-    }
-  });
+  var parseData = function(res, body) {
+    return JSON.parse(body).data;
+  };
+  return requestAsync(requestURL)
+    .spread(parseData)
+    .map(self._trimPhotoObject)
+    .map(self._applyTagFilter.bind(self, query))
+    .map(self._calculateDistance.bind(self, lat, lng))
+    .then(self._sortResults.bind(self, sortParams))
+    .catch(self.emit.bind(self, 'error'));
 };
 
 /**
-* Add new attributes to an object of photos
+* Builds Url from parameters
 * @function
-* @param {object} results Object containing data from Instagram response call
-* @param {array} funcArray Array of functions that will add attributes to photoObj
-* @returns {object} results Object containing data from Instagram response call and additional attributes appended
+* @memberof module:InstagramService
+* @param {object} allParameters Object of parameters passed in via query string.  May contain the following parameters (lat, lng, minDate, maxDate, query, distance, and callType)
+* @param {function} callback Callback function invoked on response results
 */
-var resultsDecorator = function(results, funcArray) {
-  _(results).forEach(function(item) {
-    _(funcArray).forEach(function(func) {
-      func(item);
-    });
-  });
-  return results;
+InstagramService.prototype._buildUrl = function(parameters) {
+  var minDate = Math.floor(parameters.minDate/1000) || Date.now() - dayInMilliSeconds;
+  var maxDate = Math.floor(parameters.maxDate/1000) || Date.now();
+  var lat = parseFloat(parameters.lat) || null;
+  var lng = parseFloat(parameters.lng) || null;
+  var query = (parameters.query || 'null').replace(/#/g,'').split(' ').join('').toLowerCase();
+  var distance = parameters.distance || 1000;
+  var self = this;
+
+  if (parameters.callType === 'query') {
+    return util.format(self.urls[0], query, self.settings.headers.instaToken);
+  }
+  return util.format(self.urls[1], self.settings.headers.instaToken, lat, lng, maxDate, minDate, distance);
 };
 
 /**
@@ -91,7 +95,7 @@ var resultsDecorator = function(results, funcArray) {
 * @param {object} photoObj Object containing response (after invoking JSON.parse) from Instagram API call
 * @returns {object} photoObj Object with attributes removed
 */
-var trimResponse = function(photoObj) {
+InstagramService.prototype._trimPhotoObject = function(photoObj) {
   delete photoObj.attribution;
   delete photoObj.comments;
   delete photoObj.filter;
@@ -117,16 +121,12 @@ var trimResponse = function(photoObj) {
 * @param {object} results Object containing photo data from Instagram API call
 * @returns {object} Object containing photo data with tagMatch attribute appended
 */
-var applyTagFilter = function(query, photoObj) {
-  var tagFound = 1;
-  for(var i=0;i<photoObj.tags.length;i++) {
-//     if(photoObj.tags[i].indexOf(inputParams.query) > -1) {
-    if(photoObj.tags[i].indexOf(query) > -1) {
-      tagFound = 0;
-    }
-  }
-   _.extend(photoObj, {tagMatch: tagFound});
-  return photoObj;
+InstagramService.prototype._applyTagFilter = function(query, photoObj) {
+  var tagFound = _.some(photoObj.tags, function(tag) {
+    return tag.indexOf(query) > -1
+  });
+
+  return _.extend(photoObj, { tagMatch: tagFound ? 1 : 0 });
 };
 
 /**
@@ -137,32 +137,31 @@ var applyTagFilter = function(query, photoObj) {
 * @param {object} photoObj Object containing photo data from Instagram API call
 * @returns {object} photoObj Object containing photo data with distance attribute appended - if photoObj.location is set to null, return value of 100,000 in order to sort it last
 */
-var calculateDistance = function(lat, lng, photoObj) {
-  if(photoObj.location === null || lat === undefined ||  lng === undefined) {
+InstagramService.prototype._calculateDistance = function(lat, lng, photoObj) {
+  if (photoObj.location === null || lat === undefined ||  lng === undefined) {
     _.extend(photoObj, { distance: 10000000 });
-  } else {
-    var firstLocation = {
-      lat: lat,
-      lng: lng
-    };
-    var secondLocation = {
-      lat: photoObj.location.latitude,
-      lng: photoObj.location.longitude
-    };
-    _.extend(photoObj, { distance: distance(firstLocation, secondLocation) });
+    return photoObj;
   }
-
+  var firstLocation = {
+    lat: lat,
+    lng: lng
+  };
+  var secondLocation = {
+    lat: photoObj.location.latitude,
+    lng: photoObj.location.longitude
+  };
+  _.extend(photoObj, { distance: distance(firstLocation, secondLocation) });
   return photoObj;
 };
 
 /**
-* Calculate distance from lat/lng inputs in instaLocations
+* Sort results by parameters
 * @function
-* @param {object} results Object containing response from Instagram API call with additional appended attributes (ex. tagMatch, distance)
 * @param {array} parameters Array of sorting parameters in order of priority
+* @param {object} results Object containing response from Instagram API call with additional appended attributes (ex. tagMatch, distance)
 * @returns {array} Array of results sorted by parameters
 */
-var sortResults = function(results,parameters) {
+InstagramService.prototype._sortResults = function(parameters, results) {
   return _(results).sortBy(parameters).valueOf();
 };
 
@@ -174,7 +173,7 @@ var sortResults = function(results,parameters) {
 * @param {object} loc2 Object containing lattitude, longitude of second location (lat, lng)
 * @returns {number} distance The distance between the first and second location
 */
-var distance = function(loc1, loc2) {
+function distance(loc1, loc2) {
   var RADIUS = 6371;
   var lngDiff = degreeToRadian(loc1.lng - loc2.lng);
   var latDiff = degreeToRadian(loc1.lat - loc2.lat);
@@ -192,6 +191,8 @@ var distance = function(loc1, loc2) {
 * @param {number} number
 * @returns {number} The input number, which had been expressed in degrees, converted to radians
 */
-var degreeToRadian = function(number) {
+function degreeToRadian(number) {
   return (number / 180) * Math.PI;
 };
+
+module.exports = new InstagramService(instaSettings);

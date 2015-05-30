@@ -9,10 +9,9 @@ exports.apiRouter = function(app) {
 
   app.get('/twitterTrendingCities', helpers.twitterTrendingCities);
 
-  app.get('/googlenews', ApiController.getGoogleNewsResults);
-  // app.get('/googlenews', helpers.google);
+  app.get('/googlenews', ApiController.getGoogleNewsResults.bind(ApiController));
 
-  app.get('/instagram', helpers.instagram);
+  app.get('/instagram', ApiController.getInstagramPhotos.bind(ApiController));
 
-  app.get('/flickr', helpers.flickr);
+  app.get('/flickr', ApiController.getCityBackgrounds.bind(ApiController));
 };
